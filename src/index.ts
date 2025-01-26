@@ -15,15 +15,20 @@ function validateBranchNameOrCommitHash(value: string) {
 }
 
 
-async function applyChanges(branchToApplyChangesTo: string , diffFileNames: Array<string>) {
+async function applyChanges({fromCommitHash, branchToApplyChangesTo, diffFileNames}: {
+    fromCommitHash: string,
+    branchToApplyChangesTo: string,
+    diffFileNames: Array<string>
+}) {
     try {
-        
+            const {message: currentBranch} = (await $`git branch --show-current`) 
+            await $`git checkout ${fromCommitHash}`
             await $`git checkout -b ${branchToApplyChangesTo}`
             for (const fileName of diffFileNames) {
                 await $`git apply ${fileName}`
                 await $`git commit -m ${fileName} --no-verify`
             }
-            await $`git checkout -`
+            await $`git checkout ${currentBranch}`
     } catch (error) {
         await $`git checkout -`
         console.log(error)
@@ -70,7 +75,7 @@ async function main() {
 
     const project = await p.group(
         {
-            commitHash: () =>
+            fromCommitHash: () =>
                 p.text({
                     message: 'What branch / git commit hash do you want to create the diff with?',
                     placeholder: "main",
@@ -96,7 +101,7 @@ async function main() {
     initializeFolderIfNotExists(`${baseDirName}/${aiCommitsDir}`);
 
     const allDiffFileName = getAllDiffFileName();
-    await $ `git diff ${project.commitHash} --output=${allDiffFileName}`
+    await $ `git diff ${project.fromCommitHash} --output=${allDiffFileName}`
     s.stop('Diff files generated');
 
     const diff = await fsPromises.readFile(allDiffFileName, "utf8");
@@ -154,7 +159,7 @@ You are an AI specialized in Git operations and diff file management. Your task 
 
         const branchToApplyChangesTo = await p.text({
             message: 'What branch do you want to apply the commits to?',
-            placeholder: project.commitHash,
+            placeholder: project.fromCommitHash,
             validate: validateBranchNameOrCommitHash,
         })
 
@@ -162,7 +167,7 @@ You are an AI specialized in Git operations and diff file management. Your task 
             s.start(`Applying changes`);
             const diffFilePaths = fs.readdirSync(`./${baseDirName}/${aiCommitsDir}/`).map(fileName => `./${baseDirName}/${aiCommitsDir}/${fileName}`);
             console.log("diffFileNames", diffFilePaths)
-            await applyChanges(branchToApplyChangesTo, diffFilePaths);
+            await applyChanges({fromCommitHash: project.fromCommitHash, branchToApplyChangesTo, diffFileNames: diffFilePaths});
             s.stop(`Changes added`);
         }
 
