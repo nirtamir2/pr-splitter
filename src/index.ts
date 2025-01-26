@@ -44,6 +44,12 @@ function getAllDiffFileName() {
     return `./${baseDirName}/pr-splitter-all-diff.diff`;
 }
 
+function initializeFolderIfNotExists(path: string) {
+    if (!fs.existsSync(path)) {
+        fs.mkdirSync(path);
+    }
+}
+
 async function main() {
     console.clear();
 
@@ -86,9 +92,8 @@ async function main() {
     s.start('Generating the diff file');
 
 
-    if (!fs.existsSync(baseDirName)){
-        fs.mkdirSync(baseDirName);
-    }
+    initializeFolderIfNotExists(baseDirName);
+    initializeFolderIfNotExists(`${baseDirName}/${aiCommitsDir}`);
 
     const allDiffFileName = getAllDiffFileName();
     await $ `git diff ${project.commitHash} --output=${allDiffFileName}`
@@ -168,6 +173,8 @@ You are an AI specialized in Git operations and diff file management. Your task 
 
     p.outro(`Problems? ${color.underline(color.cyan('https://example.com/issues'))}`);
 }
+// a
+
 
 // eslint-disable-next-line unicorn/prefer-top-level-await, github/no-then
 main().catch(console.error);
