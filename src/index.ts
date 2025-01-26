@@ -26,14 +26,13 @@ async function applyChanges({fromCommitHash, branchToApplyChangesTo, diffFileNam
         console.log("1", 1)
         try {
             console.log("index#applyChanges() TRY", branchToApplyChangesTo);
-            await $`git switch ${branchToApplyChangesTo}`
+            await $`git switch -c ${branchToApplyChangesTo}`
+                console.log("2", 2)
         }
         catch (error) {
             console.log("index#applyChanges() ERROR",);
             console.log("error", error)
         }
-            await $`git switch -c ${branchToApplyChangesTo}`
-        console.log("2", 2)
             for (const fileName of diffFileNames) {
                 console.log("fileName", fileName)
                 await $`git apply ${fileName}`
