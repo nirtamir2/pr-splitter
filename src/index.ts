@@ -26,7 +26,7 @@ async function applyChanges({fromCommitHash, branchToApplyChangesTo, diffFileNam
             await $`git checkout -b ${branchToApplyChangesTo}`
             for (const fileName of diffFileNames) {
                 await $`git apply ${fileName}`
-                await $`git commit -m ${fileName} --no-verify`
+                await $`git commit -am ${fileName} --no-verify`
             }
             await $`git checkout ${currentBranch}`
     } catch (error) {
@@ -180,7 +180,6 @@ You are an AI specialized in Git operations and diff file management. Your task 
 
     p.outro(`Problems? ${color.underline(color.cyan('https://example.com/issues'))}`);
 }
-// a
 
 
 // eslint-disable-next-line unicorn/prefer-top-level-await, github/no-then
