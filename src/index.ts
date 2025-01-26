@@ -1,21 +1,10 @@
 import * as p from '@clack/prompts';
 import color from 'picocolors';
 import {$} from "execa";
-import { generateObject } from 'ai';
-import { z } from 'zod';
+import {generateObject} from 'ai';
+import {z} from 'zod';
 import {ollama} from "ollama-ai-provider";
 import fsPromises from "node:fs/promises";
-
-const systemPrompt = `
-You are an AI specialized in Git operations and diff file management. Your task is to handle a given Git diff file representing changes in a pull request. Specifically, you will:
-1. Separate the Diff File: Break down the single large diff file into multiple smaller diff files, each corresponding to a logical commit.
-2. Preserve Commit Order: Ensure that the commits are ordered logically, as the sequence will dictate how the diffs are applied.
-3. Maintain Validity: Each generated diff must be syntactically correct and ready to be applied using Git commands like git apply.
-4. Ensure Completeness: The sum of all the generated diff files must match the input diff file exactly. No changes should be added, removed, or altered during the separation process.
-5. Group Logically: Changes should be grouped meaningfully to represent cohesive units of work or intent, avoiding mixing unrelated changes in the same commit.
-6. Provide Informative Messages: Ensure that the message field in each commit succinctly describes the changes or their purpose, helping reviewers understand the context.
-7. Do Not Modify User Code: You are not allowed to modify the content of the user code. Only separate and organize the existing diff content as required.
-`;
 
 function validateBranchNameOrCommitHash(value: string) {
     if (!value) return 'Please enter a branch name/ commit hash';
@@ -25,13 +14,13 @@ function validateBranchNameOrCommitHash(value: string) {
 }
 
 
+// eslint-disable-next-line sonarjs/cognitive-complexity
 async function main() {
     console.clear();
 
 
     // await setTimeout(1000);
-    const gitCurrentBranch = await $`git branch --show-current`
-    console.log(gitCurrentBranch.message)
+    const {message: gitCurrentBranch} = (await $`git branch --show-current`)
 
     p.updateSettings({
         aliases: {
@@ -50,15 +39,9 @@ async function main() {
                 p.text({
                     message: 'What branch / git commit hash do you want to create the diff with?',
                     placeholder: "main",
-                    defaultValue: gitCurrentBranch.message,
+                    defaultValue: gitCurrentBranch,
                     validate: validateBranchNameOrCommitHash,
                 }),
-            // aiBranchName: ({results}) =>
-            //     p.text({
-            //         message: 'What branch do you want to create the PR?',
-            //         placeholder: `${results.commitHash ?? "pr-splitter"}-ai`,
-            //         validate: validateBranchName,
-            //     }),
 
 
             // type: ({ results }) =>
@@ -117,19 +100,29 @@ async function main() {
         s.start('Splitting the diff with AI');
         try {
 
-        const { object } = await generateObject({
-            model: ollama("llama3.1"),
-            schema: z.object({
-                commits: z.array(
-                    z.object({
-                        message: z.string(),
-                        diffFileContent: z.string(),
-                    })
-                ),
-            }),
-            system: systemPrompt,
-            prompt: diff,
-        });
+            const { object } = await generateObject({
+                model: ollama("llama3.1"),
+                schema: z.object({
+                    commits: z.array(
+                        z.object({
+                            message: z.string(),
+                            diffFileContent: z.string(),
+                        })
+                    ),
+                }),
+                system: `
+You are an AI specialized in Git operations and diff file management. Your task is to process the input diff file representing changes in a pull request. For each commit in the diff, do the following:
+1. Separate the changes into distinct commits based on logical groupings of changes.
+2. For each commit, generate a diff file (in unified diff format) and a message that succinctly describes the changes or their purpose.
+3. Ensure the diff files are valid and can be applied using Git commands like 'git apply'.
+4. Output the results in the following structure:
+   - An array of objects, where each object has:
+     - 'message': A string describing the purpose or changes in the commit.
+     - 'diffFileContent': A string containing the diff content for that commit.
+5. Do not modify the content of the user code. Only separate and organize the existing diff content.
+`,
+                prompt: diff,
+            });
 
 
         console.log(object)
@@ -147,12 +140,39 @@ async function main() {
             const diffFileName = `./${commit.message}-diff.diff`;
             await fsPromises.writeFile(diffFileName, commit.diffFileContent)
             // await $`git apply ${diffFileName}`
-            // s.message(`Create commit for ${commit.message}`);
             // await $`git commit -m ${commit.message}`
-            s.stop(`Create commit for ${commit.message}`);
+            s.stop(`Create commit for "${commit.message}"`);
         }
+            p.note(`The PR is split into multiple ${commits.length} commits `, 'Next steps.');
 
-        s.stop('Finish generating stuff');
+            const branchToApplyChangesTo = await  p.text({
+                message: 'What branch do you want to apply the commits to?',
+                placeholder: project.commitHash,
+                validate: validateBranchNameOrCommitHash,
+            })
+
+            s.start(`Applying changes`);
+
+            try {
+
+            if(typeof branchToApplyChangesTo === "string" && branchToApplyChangesTo.length > 0){
+                await $`git checkout -b ${branchToApplyChangesTo}`
+                for (const commit of commits) {
+                  await $`git apply ${commit.diffFileContent}`
+                  await $`git commit -m ${commit.message} --no-verify`
+                }
+                await $`git checkout -`
+            }
+            }
+            catch (error) {
+                console.log( error)
+                p.cancel("Failed to apply changes")
+                // eslint-disable-next-line unicorn/no-process-exit
+                process.exit(0);
+            }
+
+            s.stop(`Changes added`);
+
         }
         catch (error) {
             console.log( error)
@@ -164,9 +184,7 @@ async function main() {
 
     // AA
 
-    // const nextSteps = `cd ${project.path}        \n${project.install ? '' : 'pnpm install\n'}pnpm dev`;
 
-    // p.note(nextSteps, 'Next steps.');
 
 
     // B
