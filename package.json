@@ -1,18 +1,18 @@
 {
-  "name": "pkg-placeholder",
+  "name": "pr-splitter",
   "type": "module",
   "version": "0.0.0",
   "packageManager": "pnpm@9.15.4",
-  "description": "_description_",
-  "author": "Anthony Fu <anthonyfu117@hotmail.com>",
+  "description": "pr-splitter is an AI tool that splits pull requests into smaller, manageable parts.",
+  "author": "Nir Tamir <nirtamir2@gmail.com>",
   "license": "MIT",
-  "funding": "https://github.com/sponsors/antfu",
-  "homepage": "https://github.com/antfu/pkg-placeholder#readme",
+  "funding": "https://github.com/sponsors/nirtamir2",
+  "homepage": "https://github.com/nirtamir2/pr-splitter#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/antfu/pkg-placeholder.git"
+    "url": "git+https://github.com/nirtamir2/pr-splitter.git"
   },
-  "bugs": "https://github.com/antfu/pkg-placeholder/issues",
+  "bugs": "https://github.com/nirtamir2/pr-splitter/issues",
   "keywords": [],
   "sideEffects": false,
   "exports": {
@@ -34,8 +34,8 @@
   ],
   "scripts": {
     "build": "unbuild",
-    "dev": "unbuild --stub",
-    "lint": "eslint .",
+    "dev": "unbuild --stub && pnpm start",
+    "lint": "eslint --fix .",
     "prepublishOnly": "nr build",
     "release": "bumpp && pnpm publish",
     "start": "tsx src/index.ts",
@@ -43,10 +43,17 @@
     "typecheck": "tsc --noEmit",
     "prepare": "simple-git-hooks"
   },
+  "dependencies": {
+    "@clack/prompts": "^0.9.1",
+    "ai": "^4.1.6",
+    "execa": "^9.5.2",
+    "ollama-ai-provider": "^1.2.0",
+    "picocolors": "^1.1.1"
+  },
   "devDependencies": {
-    "@antfu/eslint-config": "^3.14.0",
     "@antfu/ni": "^23.2.0",
     "@antfu/utils": "^8.1.0",
+    "@nirtamir2/eslint-config": "^0.0.2-beta.20",
     "@types/node": "^22.10.6",
     "bumpp": "^9.10.1",
     "eslint": "^9.18.0",
