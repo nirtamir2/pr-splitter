@@ -5,6 +5,7 @@ import {generateObject} from 'ai';
 import {z} from 'zod';
 import {ollama} from "ollama-ai-provider";
 import fsPromises from "node:fs/promises";
+import * as fs from "node:fs";
 
 function validateBranchNameOrCommitHash(value: string) {
     if (!value) return 'Please enter a branch name/ commit hash';
@@ -84,7 +85,11 @@ async function main() {
 
     s.start('Generating the diff file');
 
-    await $ `mkdir ${dirName}`
+
+    if (!fs.existsSync(dirName)){
+        fs.mkdirSync(dirName);
+    }
+
     const allDiffFileName = getAllDiffFileName();
     await $ `git diff ${project.commitHash} --output=${allDiffFileName}`
     s.stop('Diff files generated');
