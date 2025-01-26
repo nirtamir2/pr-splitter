@@ -25,6 +25,7 @@ async function applyChanges(branchToApplyChangesTo: string , commits: Array<{dif
             }
             await $`git checkout -`
     } catch (error) {
+        await $`git checkout -`
         console.log(error)
         p.cancel("Failed to apply changes")
         // eslint-disable-next-line unicorn/no-process-exit
@@ -32,6 +33,14 @@ async function applyChanges(branchToApplyChangesTo: string , commits: Array<{dif
     }
 }
 
+
+function getDiffFileName(message: string) {
+    return `./pr-splitter/${message}.diff`;
+}
+
+function getAllDiffFileName() {
+    return `./pr-splitter/pr-splitter-all-diff.diff`;
+}
 
 async function main() {
     console.clear();
@@ -60,38 +69,6 @@ async function main() {
                     defaultValue: gitCurrentBranch,
                     validate: validateBranchNameOrCommitHash,
                 }),
-
-
-            // type: ({ results }) =>
-            //     p.select({
-            //         message: `Pick a project type within "${results.path}"`,
-            //         initialValue: 'ts',
-            //         maxItems: 5,
-            //         options: [
-            //             { value: 'ts', label: 'TypeScript' },
-            //             { value: 'js', label: 'JavaScript' },
-            //             { value: 'rust', label: 'Rust' },
-            //             { value: 'go', label: 'Go' },
-            //             { value: 'python', label: 'Python' },
-            //             { value: 'coffee', label: 'CoffeeScript', hint: 'oh no' },
-            //         ],
-            //     }),
-            // tools: () =>
-            //     p.multiselect({
-            //         message: 'Select additional tools.',
-            //         initialValues: ['prettier', 'eslint'],
-            //         options: [
-            //             { value: 'prettier', label: 'Prettier', hint: 'recommended' },
-            //             { value: 'eslint', label: 'ESLint', hint: 'recommended' },
-            //             { value: 'stylelint', label: 'Stylelint' },
-            //             { value: 'gh-action', label: 'GitHub Action' },
-            //         ],
-            //     }),
-            confirm: () =>
-                p.confirm({
-                    message: 'This will create a diff file and try to change the stuff with AI',
-                    initialValue: true,
-                }),
         },
         {
             onCancel: () => {
@@ -102,33 +79,34 @@ async function main() {
         }
     );
 
-    if (project.confirm) {
-        const s = p.spinner();
-        s.start('Generating the diff file');
-        await $`git diff ${project.commitHash} --output=pr-splitter.diff`
-        s.stop('Diff files generated');
+    const s = p.spinner();
 
-        const diff = await fsPromises.readFile("pr-splitter.diff", "utf8");
-        if(diff.length === 0){
-            p.cancel("Diff file is empty")
-            // eslint-disable-next-line unicorn/no-process-exit
-            process.exit(0);
-        }
+    s.start('Generating the diff file');
+    const allDiffFileName = getAllDiffFileName();
+    await $ `git diff ${project.commitHash} --output=${allDiffFileName}`
+    s.stop('Diff files generated');
 
-        s.start('Splitting the diff with AI');
-        try {
+    const diff = await fsPromises.readFile(allDiffFileName, "utf8");
+    if (diff.length === 0) {
+        p.cancel("Diff file is empty")
+        // eslint-disable-next-line unicorn/no-process-exit
+        process.exit(0);
+    }
 
-            const { object } = await generateObject({
-                model: ollama("llama3.1"),
-                schema: z.object({
-                    commits: z.array(
-                        z.object({
-                            message: z.string(),
-                            diffFileContent: z.string(),
-                        })
-                    ),
-                }),
-                system: `
+    s.start('Splitting the diff with AI');
+    try {
+
+        const {object} = await generateObject({
+            model: ollama("llama3.1"),
+            schema: z.object({
+                commits: z.array(
+                    z.object({
+                        message: z.string(),
+                        diffFileContent: z.string(),
+                    })
+                ),
+            }),
+            system: `
 You are an AI specialized in Git operations and diff file management. Your task is to process the input diff file representing changes in a pull request. For each commit in the diff, do the following:
 1. Separate the changes into distinct commits based on logical groupings of changes.
 2. For each commit, generate a diff file (in unified diff format) and a message that succinctly describes the changes or their purpose.
@@ -139,57 +117,44 @@ You are an AI specialized in Git operations and diff file management. Your task 
      - 'diffFileContent': A string containing the diff content for that commit.
 5. Do not modify the content of the user code. Only separate and organize the existing diff content.
 `,
-                prompt: diff,
-            });
-
-
-        console.log(object)
+            prompt: diff,
+        });
 
         s.stop('AI split the PR to multiple diffs');
 
         const {commits} = object;
-        
+
         for (const commit of commits) {
             console.log(commit.message)
         }
-        
+
         for (const commit of commits) {
             s.start(`Create diff for ${commit.message}`);
-            const diffFileName = `./${commit.message}.diff`;
+            const diffFileName = getDiffFileName(commit.message);
             await fsPromises.writeFile(diffFileName, commit.diffFileContent)
-            // await $`git apply ${diffFileName}`
-            // await $`git commit -m ${commit.message}`
             s.stop(`Create commit for "${commit.message}"`);
         }
-            p.note(`The PR is split into multiple ${commits.length} commits `, 'Next steps.');
+        p.note(`The PR is split into multiple ${commits.length} commits `, 'Next steps.');
 
-            const branchToApplyChangesTo = await  p.text({
-                message: 'What branch do you want to apply the commits to?',
-                placeholder: project.commitHash,
-                validate: validateBranchNameOrCommitHash,
-            })
+        const branchToApplyChangesTo = await p.text({
+            message: 'What branch do you want to apply the commits to?',
+            placeholder: project.commitHash,
+            validate: validateBranchNameOrCommitHash,
+        })
 
-            if (typeof branchToApplyChangesTo === "string" && branchToApplyChangesTo.length > 0) {
-                s.start(`Applying changes`);
-                await applyChanges(branchToApplyChangesTo, commits);
-                s.stop(`Changes added`);
-            }
-
+        if (typeof branchToApplyChangesTo === "string" && branchToApplyChangesTo.length > 0) {
+            s.start(`Applying changes`);
+            await applyChanges(branchToApplyChangesTo, commits);
+            s.stop(`Changes added`);
         }
-        catch (error) {
-            console.log( error)
-            p.cancel("AI failed to split the diff")
-            // eslint-disable-next-line unicorn/no-process-exit
-            process.exit(0);
-        }
+
+    } catch (error) {
+        console.log(error)
+        p.cancel("AI failed to split the diff")
+        // eslint-disable-next-line unicorn/no-process-exit
+        process.exit(0);
     }
 
-    // AA
-
-
-
-
-    // B
     p.outro(`Problems? ${color.underline(color.cyan('https://example.com/issues'))}`);
 }
 
