@@ -82,6 +82,7 @@ async function main() {
     const s = p.spinner();
 
     s.start('Generating the diff file');
+    await $`mkdir pr-splitter`
     const allDiffFileName = getAllDiffFileName();
     await $ `git diff ${project.commitHash} --output=${allDiffFileName}`
     s.stop('Diff files generated');
