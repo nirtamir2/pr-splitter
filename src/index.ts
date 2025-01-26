@@ -106,6 +106,9 @@ async function main() {
         process.exit(0);
     }
 
+
+
+
     s.start('Splitting the diff with AI');
     try {
 
@@ -157,7 +160,7 @@ You are an AI specialized in Git operations and diff file management. Your task 
 
         if (typeof branchToApplyChangesTo === "string" && branchToApplyChangesTo.length > 0) {
             s.start(`Applying changes`);
-            const filePaths = fs.readdirSync(`${baseDirName}/${aiCommitsDir}`);
+            const filePaths = fs.readdirSync(`./${baseDirName}/${aiCommitsDir}/`);
             const diffFileNames = filePaths.map(fileName => `./${baseDirName}/${aiCommitsDir}/${fileName}`);
             console.log("diffFileNames", diffFileNames)
             await applyChanges(branchToApplyChangesTo, diffFileNames);
