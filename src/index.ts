@@ -20,17 +20,32 @@ async function applyChanges({fromCommitHash, branchToApplyChangesTo, diffFileNam
     branchToApplyChangesTo: string,
     diffFileNames: Array<string>
 }) {
-    const {message: currentBranch} = (await $`git branch --show-current`)
+    const {message: currentBranch} = await $`git branch --show-current`;
     try {
-            await $`git checkout ${fromCommitHash}`
-            await $`git checkout -b ${branchToApplyChangesTo}`
+            await $`git switch ${fromCommitHash}`
+        console.log("1", 1)
+        try {
+            console.log("index#applyChanges() TRY", branchToApplyChangesTo);
+            await $`git switch ${branchToApplyChangesTo}`
+        }
+        catch (error) {
+            console.log("index#applyChanges() ERROR",);
+            console.log("error", error)
+        }
+            await $`git switch -c ${branchToApplyChangesTo}`
+        console.log("2", 2)
             for (const fileName of diffFileNames) {
+                console.log("fileName", fileName)
                 await $`git apply ${fileName}`
+                console.log("commit", fileName)
                 await $`git commit -am ${fileName} --no-verify`
+
             }
-            await $`git checkout ${currentBranch}`
+
+                console.log("currentBranch", currentBranch)
+            await $`git switch ${currentBranch}`
     } catch (error) {
-        await $`git checkout ${currentBranch}`
+        await $`git switch ${currentBranch}`
         console.log(error)
         p.cancel("Failed to apply changes")
         // eslint-disable-next-line unicorn/no-process-exit
