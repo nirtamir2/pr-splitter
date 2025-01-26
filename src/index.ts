@@ -54,14 +54,14 @@ async function applyChanges({fromCommitHash, branchToApplyChangesTo, diffFileNam
 }
 
 const baseDirName = `pr-splitter`;
-    const aiCommitsDir = `ai-commits`;
+const aiCommitsDir = `ai-commits`;
 
 function getDiffFileName(message: string) {
-    return `./${baseDirName}/${aiCommitsDir}/${message}.diff`;
+    return `./${baseDirName}/${aiCommitsDir}/${message}.patch`;
 }
 
 function getAllDiffFileName() {
-    return `./${baseDirName}/pr-splitter-all-diff.diff`;
+    return `./${baseDirName}/pr-splitter-all-diff.patch`;
 }
 
 function initializeFolderIfNotExists(path: string) {
