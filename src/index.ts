@@ -33,13 +33,14 @@ async function applyChanges(branchToApplyChangesTo: string , commits: Array<{dif
     }
 }
 
+const dirName = `pr-splitter`;
 
 function getDiffFileName(message: string) {
-    return `./pr-splitter/${message}.diff`;
+    return `./${dirName}/${message}.diff`;
 }
 
 function getAllDiffFileName() {
-    return `./pr-splitter/pr-splitter-all-diff.diff`;
+    return `./${dirName}/pr-splitter-all-diff.diff`;
 }
 
 async function main() {
@@ -82,7 +83,8 @@ async function main() {
     const s = p.spinner();
 
     s.start('Generating the diff file');
-    await $`mkdir pr-splitter`
+
+    await $ `mkdir ${dirName}`
     const allDiffFileName = getAllDiffFileName();
     await $ `git diff ${project.commitHash} --output=${allDiffFileName}`
     s.stop('Diff files generated');
