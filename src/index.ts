@@ -14,7 +14,25 @@ function validateBranchNameOrCommitHash(value: string) {
 }
 
 
-// eslint-disable-next-line sonarjs/cognitive-complexity
+async function applyChanges(branchToApplyChangesTo: string , commits: Array<{diffFileContent: string,
+    message: string}>) {
+    try {
+        
+            await $`git checkout -b ${branchToApplyChangesTo}`
+            for (const commit of commits) {
+                await $`git apply ${commit.diffFileContent}`
+                await $`git commit -m ${commit.message} --no-verify`
+            }
+            await $`git checkout -`
+    } catch (error) {
+        console.log(error)
+        p.cancel("Failed to apply changes")
+        // eslint-disable-next-line unicorn/no-process-exit
+        process.exit(0);
+    }
+}
+
+ 
 async function main() {
     console.clear();
 
@@ -151,27 +169,11 @@ You are an AI specialized in Git operations and diff file management. Your task 
                 validate: validateBranchNameOrCommitHash,
             })
 
-            s.start(`Applying changes`);
-
-            try {
-
-            if(typeof branchToApplyChangesTo === "string" && branchToApplyChangesTo.length > 0){
-                await $`git checkout -b ${branchToApplyChangesTo}`
-                for (const commit of commits) {
-                  await $`git apply ${commit.diffFileContent}`
-                  await $`git commit -m ${commit.message} --no-verify`
-                }
-                await $`git checkout -`
+            if (typeof branchToApplyChangesTo === "string" && branchToApplyChangesTo.length > 0) {
+                s.start(`Applying changes`);
+                await applyChanges(branchToApplyChangesTo, commits);
+                s.stop(`Changes added`);
             }
-            }
-            catch (error) {
-                console.log( error)
-                p.cancel("Failed to apply changes")
-                // eslint-disable-next-line unicorn/no-process-exit
-                process.exit(0);
-            }
-
-            s.stop(`Changes added`);
 
         }
         catch (error) {
