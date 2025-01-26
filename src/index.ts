@@ -160,10 +160,9 @@ You are an AI specialized in Git operations and diff file management. Your task 
 
         if (typeof branchToApplyChangesTo === "string" && branchToApplyChangesTo.length > 0) {
             s.start(`Applying changes`);
-            const filePaths = fs.readdirSync(`./${baseDirName}/${aiCommitsDir}/`);
-            const diffFileNames = filePaths.map(fileName => `./${baseDirName}/${aiCommitsDir}/${fileName}`);
-            console.log("diffFileNames", diffFileNames)
-            await applyChanges(branchToApplyChangesTo, diffFileNames);
+            const diffFilePaths = fs.readdirSync(`./${baseDirName}/${aiCommitsDir}/`).map(fileName => `./${baseDirName}/${aiCommitsDir}/${fileName}`);
+            console.log("diffFileNames", diffFilePaths)
+            await applyChanges(branchToApplyChangesTo, diffFilePaths);
             s.stop(`Changes added`);
         }
 
