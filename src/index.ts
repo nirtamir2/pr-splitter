@@ -20,7 +20,7 @@ async function applyChanges(branchToApplyChangesTo: string , commits: Array<{dif
         
             await $`git checkout -b ${branchToApplyChangesTo}`
             for (const commit of commits) {
-                await $`git apply ${commit.diffFileContent}`
+                await $`git apply ${commit.message}.diff`
                 await $`git commit -m ${commit.message} --no-verify`
             }
             await $`git checkout -`
@@ -32,7 +32,7 @@ async function applyChanges(branchToApplyChangesTo: string , commits: Array<{dif
     }
 }
 
- 
+
 async function main() {
     console.clear();
 
