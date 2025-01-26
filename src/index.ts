@@ -15,14 +15,13 @@ function validateBranchNameOrCommitHash(value: string) {
 }
 
 
-async function applyChanges(branchToApplyChangesTo: string , commits: Array<{diffFileContent: string,
-    message: string}>) {
+async function applyChanges(branchToApplyChangesTo: string , diffFileNames: Array<string>) {
     try {
         
             await $`git checkout -b ${branchToApplyChangesTo}`
-            for (const commit of commits) {
-                await $`git apply ${commit.message}.diff`
-                await $`git commit -m ${commit.message} --no-verify`
+            for (const fileName of diffFileNames) {
+                await $`git apply ${fileName}`
+                await $`git commit -m ${fileName} --no-verify`
             }
             await $`git checkout -`
     } catch (error) {
@@ -34,14 +33,15 @@ async function applyChanges(branchToApplyChangesTo: string , commits: Array<{dif
     }
 }
 
-const dirName = `pr-splitter`;
+const baseDirName = `pr-splitter`;
+    const aiCommitsDir = `ai-commits`;
 
 function getDiffFileName(message: string) {
-    return `./${dirName}/ai-commits/${message}.diff`;
+    return `./${baseDirName}/${aiCommitsDir}/${message}.diff`;
 }
 
 function getAllDiffFileName() {
-    return `./${dirName}/pr-splitter-all-diff.diff`;
+    return `./${baseDirName}/pr-splitter-all-diff.diff`;
 }
 
 async function main() {
@@ -86,8 +86,8 @@ async function main() {
     s.start('Generating the diff file');
 
 
-    if (!fs.existsSync(dirName)){
-        fs.mkdirSync(dirName);
+    if (!fs.existsSync(baseDirName)){
+        fs.mkdirSync(baseDirName);
     }
 
     const allDiffFileName = getAllDiffFileName();
@@ -152,7 +152,10 @@ You are an AI specialized in Git operations and diff file management. Your task 
 
         if (typeof branchToApplyChangesTo === "string" && branchToApplyChangesTo.length > 0) {
             s.start(`Applying changes`);
-            await applyChanges(branchToApplyChangesTo, commits);
+            const filePaths = fs.readdirSync(`${baseDirName}/${aiCommitsDir}`);
+            const diffFileNames = filePaths.map(fileName => `./${baseDirName}/${aiCommitsDir}/${fileName}`);
+            console.log("diffFileNames", diffFileNames)
+            await applyChanges(branchToApplyChangesTo, diffFileNames);
             s.stop(`Changes added`);
         }
 
