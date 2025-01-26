@@ -6,12 +6,16 @@ import { z } from 'zod';
 import {ollama} from "ollama-ai-provider";
 import fsPromises from "node:fs/promises";
 
-function validateBranchName(value: string) {
-    if (!value) return 'Please enter a branch name';
-    if (!/^[\w./-]+$/.test(value)) {
-        return 'Please enter a valid branch name';
-    }
-}
+const systemPrompt = `
+You are an AI specialized in Git operations and diff file management. Your task is to handle a given Git diff file representing changes in a pull request. Specifically, you will:
+1. Separate the Diff File: Break down the single large diff file into multiple smaller diff files, each corresponding to a logical commit.
+2. Preserve Commit Order: Ensure that the commits are ordered logically, as the sequence will dictate how the diffs are applied.
+3. Maintain Validity: Each generated diff must be syntactically correct and ready to be applied using Git commands like git apply.
+4. Ensure Completeness: The sum of all the generated diff files must match the input diff file exactly. No changes should be added, removed, or altered during the separation process.
+5. Group Logically: Changes should be grouped meaningfully to represent cohesive units of work or intent, avoiding mixing unrelated changes in the same commit.
+6. Provide Informative Messages: Ensure that the message field in each commit succinctly describes the changes or their purpose, helping reviewers understand the context.
+7. Do Not Modify User Code: You are not allowed to modify the content of the user code. Only separate and organize the existing diff content as required.
+`;
 
 function validateBranchNameOrCommitHash(value: string) {
     if (!value) return 'Please enter a branch name/ commit hash';
@@ -49,12 +53,14 @@ async function main() {
                     defaultValue: gitCurrentBranch.message,
                     validate: validateBranchNameOrCommitHash,
                 }),
-            aiBranchName: ({results}) =>
-                p.text({
-                    message: 'What branch do you want to create the PR?',
-                    placeholder: `${results.commitHash ?? "pr-splitter"}-ai`,
-                    validate: validateBranchName,
-                }),
+            // aiBranchName: ({results}) =>
+            //     p.text({
+            //         message: 'What branch do you want to create the PR?',
+            //         placeholder: `${results.commitHash ?? "pr-splitter"}-ai`,
+            //         validate: validateBranchName,
+            //     }),
+
+
             // type: ({ results }) =>
             //     p.select({
             //         message: `Pick a project type within "${results.path}"`,
@@ -101,28 +107,33 @@ async function main() {
         await $`git diff ${project.commitHash} --output=pr-splitter.diff`
         s.stop('Diff files generated');
 
-        s.start('Splitting the diff with AI');
         const diff = await fsPromises.readFile("pr-splitter.diff", "utf8");
+        if(diff.length === 0){
+            p.cancel("Diff file is empty")
+            // eslint-disable-next-line unicorn/no-process-exit
+            process.exit(0);
+        }
+
+        s.start('Splitting the diff with AI');
+        try {
+
         const { object } = await generateObject({
             model: ollama("llama3.1"),
             schema: z.object({
-                commits: z.array(z.object({
-                    message: z.string(),
-                    diff: z.string(),
-                })),
+                commits: z.array(
+                    z.object({
+                        message: z.string(),
+                        diffFileContent: z.string(),
+                    })
+                ),
             }),
-            system: `
-You are an AI specialized in Git operations and diff file management. Your task is to handle a given Git diff file representing changes in a pull request. Specifically, you will:
-\t1.\tSeparate the Diff File: Break down the single large diff file into multiple smaller diff files, each corresponding to a logical commit.
-\t2.\tPreserve Commit Order: Ensure that the commits are ordered logically, as the sequence will dictate how the diffs are applied.
-\t3.\tMaintain Validity: Each generated diff must be syntactically correct and ready to be applied using Git commands like git apply.
-\t4.\tEnsure Completeness: The sum of all the generated diff files must match the input diff file exactly. No changes should be added, removed, or altered during the separation process.
-\t5.\tGroup Logically: Changes should be grouped meaningfully to represent cohesive units of work or intent, avoiding mixing unrelated changes in the same commit.
-\t6.\tProvide Informative Messages: Ensure that the message field in each commit succinctly describes the changes or their purpose, helping reviewers understand the context.
-\t7.\tDo Not Modify User Code: You are not allowed to modify the content of the user code. Only separate and organize the existing diff content as required.
-`,
+            system: systemPrompt,
             prompt: diff,
         });
+
+
+        console.log(object)
+
         s.stop('AI split the PR to multiple diffs');
 
         const {commits} = object;
@@ -134,7 +145,7 @@ You are an AI specialized in Git operations and diff file management. Your task 
         for (const commit of commits) {
             s.start(`Create diff for ${commit.message}`);
             const diffFileName = `./${commit.message}-diff.diff`;
-            await fsPromises.writeFile(diffFileName, commit.diff)
+            await fsPromises.writeFile(diffFileName, commit.diffFileContent)
             // await $`git apply ${diffFileName}`
             // s.message(`Create commit for ${commit.message}`);
             // await $`git commit -m ${commit.message}`
@@ -142,6 +153,13 @@ You are an AI specialized in Git operations and diff file management. Your task 
         }
 
         s.stop('Finish generating stuff');
+        }
+        catch (error) {
+            console.log( error)
+            p.cancel("AI failed to split the diff")
+            // eslint-disable-next-line unicorn/no-process-exit
+            process.exit(0);
+        }
     }
 
     // AA
