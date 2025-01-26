@@ -155,7 +155,7 @@ You are an AI specialized in Git operations and diff file management. Your task 
         
         for (const commit of commits) {
             s.start(`Create diff for ${commit.message}`);
-            const diffFileName = `./${commit.message}-diff.diff`;
+            const diffFileName = `./${commit.message}.diff`;
             await fsPromises.writeFile(diffFileName, commit.diffFileContent)
             // await $`git apply ${diffFileName}`
             // await $`git commit -m ${commit.message}`
