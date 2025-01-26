@@ -37,7 +37,7 @@ async function applyChanges(branchToApplyChangesTo: string , commits: Array<{dif
 const dirName = `pr-splitter`;
 
 function getDiffFileName(message: string) {
-    return `./${dirName}/${message}.diff`;
+    return `./${dirName}/ai-commits/${message}.diff`;
 }
 
 function getAllDiffFileName() {
