@@ -58,103 +58,90 @@ function getAllDiffFileName() {
 }
 
 function initializeFolderIfNotExists(path: string) {
-  if (!fs.existsSync(path)) {
-    fs.mkdirSync(path);
-  }
+  return Effect.try({
+    try: () => {
+      if (!fs.existsSync(path)) {
+        fs.mkdirSync(path);
+      }
+    },
+    catch: (_error) => new Error(`Could not create file ${path}`),
+  });
 }
 
-const program = Effect.gen(function* (_) {
-  console.clear();
+function getCurrentBranch() {
+  return Effect.tryPromise({
+    try: () => $`git branch --show-current`,
+    catch: (error) => new Error(`Could not get current branch: ${error}`),
+  });
+}
 
-  const { message: gitCurrentBranch } = yield* _(
-    Effect.tryPromise({
-      try: () => $`git branch --show-current`,
-      // remap the error
-      catch: (unknown) => new Error(`Could not get current branch: ${unknown}`),
-    }),
-  );
-
-  p.intro(`${color.bgCyan(color.black(" pr-splitter "))}`);
-
-  const project = yield* _(
-    Effect.tryPromise({
-      try: () =>
-        p.group(
-          {
-            fromCommitHash: () => {
-              return p.text({
-                message:
-                  "What branch / git commit hash do you want to create the diff with?",
-                placeholder: "main",
-                defaultValue: gitCurrentBranch,
-                validate: validateBranchNameOrCommitHash,
-              });
-            },
+function promptUserBranch(gitCurrentBranch: string) {
+  return Effect.tryPromise({
+    try: () =>
+      p.group(
+        {
+          fromCommitHash: () => {
+            return p.text({
+              message:
+                "What branch / git commit hash do you want to create the diff with?",
+              placeholder: "main",
+              defaultValue: gitCurrentBranch,
+              validate: validateBranchNameOrCommitHash,
+            });
           },
-          {
-            onCancel: () => {
-              p.cancel("Operation cancelled.");
-              Effect.fail("Operation Canceled");
-            },
+        },
+        {
+          onCancel: () => {
+            p.cancel("Operation cancelled.");
+            Effect.fail("Operation Canceled");
           },
-        ),
-      catch: (_error) => {
-        // eslint-disable-next-line unicorn/no-process-exit
-        process.exit(0);
-      },
-    }),
-  );
+        },
+      ),
+    catch: (_error) => {
+      // eslint-disable-next-line unicorn/no-process-exit
+      process.exit(0);
+    },
+  });
+}
 
-  const s = p.spinner();
+function createDiffFile({
+  fromCommitHash,
+  allDiffFileName,
+}: {
+  fromCommitHash: string;
+  allDiffFileName: string;
+}) {
+  return Effect.tryPromise({
+    try: () => $`git diff ${fromCommitHash} --output=${allDiffFileName}`,
+    catch: (_error) => {
+      Effect.fail("Failed to generate diff file");
+    },
+  });
+}
 
-  s.start("Generating the diff file");
+function readDiffFile(allDiffFileName: string) {
+  return Effect.tryPromise({
+    try: () => fsPromises.readFile(allDiffFileName, "utf8"),
+    catch: (_error) => {
+      Effect.fail("Failed to read diff file");
+    },
+  });
+}
 
-  initializeFolderIfNotExists(baseDirName);
-  initializeFolderIfNotExists(`${baseDirName}/${aiCommitsDir}`);
-
-  const allDiffFileName = getAllDiffFileName();
-  yield* _(
-    Effect.tryPromise({
-      try: () =>
-        $`git diff ${project.fromCommitHash} --output=${allDiffFileName}`,
-      catch: (_error) => {
-        Effect.fail("Failed to generate diff file");
-      },
-    }),
-  );
-
-  s.stop("Diff files generated");
-
-  const diff = yield* _(
-    Effect.tryPromise({
-      try: () => fsPromises.readFile(allDiffFileName, "utf8"),
-      catch: (_error) => {
-        Effect.fail("Failed to read diff file");
-      },
-    }),
-  );
-  if (diff.length === 0) {
-    p.cancel("Diff file is empty");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
-  }
-
-  s.start("Splitting the diff with AI");
-
-  const { object } = yield* _(
-    Effect.tryPromise({
-      try: () =>
-        generateObject({
-          model: ollama("llama3.1"),
-          schema: z.object({
-            commits: z.array(
-              z.object({
-                message: z.string(),
-                diffFileContent: z.string(),
-              }),
-            ),
-          }),
-          system: `
+function getAISplitPRs(diffContent: string) {
+  return Effect.tryPromise({
+    try: () =>
+      generateObject({
+        model: ollama("llama3.1"),
+        schema: z.object({
+          commits: z.array(
+            z.object({
+              message: z.string(),
+              diffFileContent: z.string(),
+            }),
+          ),
+        }),
+        system: `
 You are an AI specialized in Git operations and diff file management. Your task is to process the input diff file representing changes in a pull request. For each commit in the diff, do the following:
 1. Separate the changes into distinct commits based on logical groupings of changes.
 2. For each commit, generate a diff file (in unified diff format) and a message that succinctly describes the changes or their purpose.
@@ -165,15 +152,80 @@ You are an AI specialized in Git operations and diff file management. Your task 
      - 'diffFileContent': A string containing the diff content for that commit.
 5. Do not modify the content of the user code. Only separate and organize the existing diff content.
 `,
-          prompt: diff,
-        }),
-      catch: (_error) => {
-        p.cancel("AI failed to split the diff");
-        // eslint-disable-next-line unicorn/no-process-exit
-        process.exit(0);
-      },
+        prompt: diffContent,
+      }),
+    catch: (_error) => {
+      p.cancel("AI failed to split the diff");
+      // eslint-disable-next-line unicorn/no-process-exit
+      process.exit(0);
+    },
+  });
+}
+
+function createDiffCommitFile(
+  diffFileName: string,
+  commit: { diffFileContent: string; message: string },
+) {
+  return Effect.tryPromise({
+    try: () => fsPromises.writeFile(diffFileName, commit.diffFileContent),
+    catch: (_error) => {
+      p.cancel(`Failed to create diff file for "${commit.message}"`);
+      Effect.fail("Failed to create diff file");
+    },
+  });
+}
+
+function promptBranchToApplyChangesTo(placeholder: string) {
+  return Effect.tryPromise({
+    try: () =>
+      p.text({
+        message: "What branch do you want to apply the commits to?",
+        placeholder,
+        validate: validateBranchNameOrCommitHash,
+      }),
+    catch: (_error) => {
+      return Effect.fail("Failed to get branch name to apply changes to");
+    },
+  });
+}
+
+const program = Effect.gen(function* (_) {
+  console.clear();
+
+  const { message: gitCurrentBranch } = yield* _(getCurrentBranch());
+
+  p.intro(`${color.bgCyan(color.black(" pr-splitter "))}`);
+
+  const project = yield* _(promptUserBranch(gitCurrentBranch));
+
+  const s = p.spinner();
+
+  s.start("Generating the diff file");
+
+  yield* _(initializeFolderIfNotExists(baseDirName));
+  yield* _(initializeFolderIfNotExists(`${baseDirName}/${aiCommitsDir}`));
+
+  const allDiffFileName = getAllDiffFileName();
+
+  yield* _(
+    createDiffFile({
+      fromCommitHash: project.fromCommitHash,
+      allDiffFileName,
     }),
   );
+
+  s.stop("Diff files generated");
+
+  const diffContent = yield* _(readDiffFile(allDiffFileName));
+
+  if (diffContent.length === 0) {
+    p.cancel("Diff file is empty");
+    yield* _(Effect.fail("Diff file is empty"));
+  }
+
+  s.start("Splitting the diff with AI");
+
+  const { object } = yield* _(getAISplitPRs(diffContent));
 
   s.stop("AI split the PR to multiple diffs");
 
@@ -186,15 +238,7 @@ You are an AI specialized in Git operations and diff file management. Your task 
   for (const commit of commits) {
     s.start(`Create diff for ${commit.message}`);
     const diffFileName = getDiffFileName(commit.message);
-    yield* _(
-      Effect.tryPromise({
-        try: () => fsPromises.writeFile(diffFileName, commit.diffFileContent),
-        catch: (_error) => {
-          p.cancel(`Failed to create diff file for "${commit.message}"`);
-          Effect.fail("Failed to create diff file");
-        },
-      }),
-    );
+    yield* _(createDiffCommitFile(diffFileName, commit));
 
     s.stop(`Create commit for "${commit.message}"`);
   }
@@ -204,17 +248,7 @@ You are an AI specialized in Git operations and diff file management. Your task 
   );
 
   const branchToApplyChangesTo = yield* _(
-    Effect.tryPromise({
-      try: () =>
-        p.text({
-          message: "What branch do you want to apply the commits to?",
-          placeholder: project.fromCommitHash,
-          validate: validateBranchNameOrCommitHash,
-        }),
-      catch: (_error) => {
-        return Effect.fail("Failed to get branch name to apply changes to");
-      },
-    }),
+    promptBranchToApplyChangesTo(project.fromCommitHash),
   );
 
   if (
@@ -222,9 +256,12 @@ You are an AI specialized in Git operations and diff file management. Your task 
     branchToApplyChangesTo.length > 0
   ) {
     s.start(`Applying changes`);
+
+    // TODO: fail if cannot readDirSync
     const diffFilePaths = fs
       .readdirSync(`./${baseDirName}/${aiCommitsDir}/`)
       .map((fileName) => `./${baseDirName}/${aiCommitsDir}/${fileName}`);
+
     yield* _(
       // TODO: change to effect
       Effect.tryPromise({
