@@ -57,6 +57,10 @@ function getAllDiffFileName() {
   return `./${baseDirName}/pr-splitter-all-diff.patch`;
 }
 
+// class CancelAndExitError extends Error{
+//   readonly _tag = "CancelAndExitError"
+// }
+
 function initializeFolderIfNotExists(path: string) {
   return Effect.try({
     try: () => {
@@ -70,7 +74,10 @@ function initializeFolderIfNotExists(path: string) {
 
 function getCurrentBranch() {
   return Effect.tryPromise({
-    try: () => $`git branch --show-current`,
+    try: async () => {
+      const result = await $`git branch --show-current`;
+      return z.string().parse(result.stdout)
+    },
     catch: (error) => new Error(`Could not get current branch: ${error}`),
   });
 }
@@ -84,8 +91,7 @@ function promptUserBranch(gitCurrentBranch: string) {
             return p.text({
               message:
                 "What branch / git commit hash do you want to create the diff with?",
-              placeholder: "main",
-              defaultValue: gitCurrentBranch,
+              placeholder: gitCurrentBranch,
               validate: validateBranchNameOrCommitHash,
             });
           },
@@ -93,7 +99,7 @@ function promptUserBranch(gitCurrentBranch: string) {
         {
           onCancel: () => {
             p.cancel("Operation cancelled.");
-            Effect.fail("Operation Canceled");
+            throw new Error("Operation cancelled.");
           },
         },
       ),
@@ -192,9 +198,9 @@ function promptBranchToApplyChangesTo(placeholder: string) {
 const program = Effect.gen(function* (_) {
   console.clear();
 
-  const { message: gitCurrentBranch } = yield* _(getCurrentBranch());
-
   p.intro(`${color.bgCyan(color.black(" pr-splitter "))}`);
+
+  const gitCurrentBranch = yield* _(getCurrentBranch());
 
   const project = yield* _(promptUserBranch(gitCurrentBranch));
 
@@ -286,6 +292,7 @@ const program = Effect.gen(function* (_) {
 
 Effect.runPromiseExit(
   Effect.catchAllDefect(program, (defect) => {
+    console.log("index#()", defect);
     if (Cause.isRuntimeException(defect)) {
       return Console.log(`RuntimeException defect caught: ${defect.message}`);
     }
